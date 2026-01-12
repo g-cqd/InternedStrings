@@ -11,8 +11,8 @@ public struct InternedStringsMacro: MemberMacro {
         conformingTo protocols: [TypeSyntax],
         in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        guard declaration.is(EnumDeclSyntax.self) else {
-            throw error(node, "@InternedStrings can only be applied to an enum")
+        guard declaration.is(EnumDeclSyntax.self) || declaration.is(ExtensionDeclSyntax.self) else {
+            throw error(node, "@InternedStrings can only be applied to an enum or extension")
         }
 
         let properties = try collectInternedProperties(from: declaration)

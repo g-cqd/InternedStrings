@@ -2,7 +2,7 @@
 
 /// Container for interned string properties.
 ///
-/// Apply to an enum containing `@Interned` properties.
+/// Apply to an enum or extension containing `@Interned` properties.
 /// Generates a shared key and obfuscated storage for all marked strings.
 ///
 /// ```swift
@@ -10,6 +10,11 @@
 /// enum Selectors {
 ///     @Interned("_privateSetFrame:") static var setFrame: String
 ///     @Interned("_privateGetBounds") static var getBounds: String
+/// }
+///
+/// @InternedStrings
+/// extension MyClass {
+///     @Interned("_privateMethod") static var privateMethod: String
 /// }
 /// ```
 @attached(member, names: arbitrary)
