@@ -1,11 +1,9 @@
-import Foundation
-
 // MARK: - Macro Declarations
 
-/// Marks a type containing interned string properties.
+/// Container for interned string properties.
 ///
-/// Apply to an enum or struct containing `@Interned` properties.
-/// Generates optimized storage and accessors for all marked properties.
+/// Apply to an enum containing `@Interned` properties.
+/// Generates a shared key and obfuscated storage for all marked strings.
 ///
 /// ```swift
 /// @InternedStrings
@@ -23,25 +21,13 @@ public macro InternedStrings() =
 
 /// Marks a property for string interning.
 ///
-/// Use within an `@InternedStrings` container. Provide the string value
-/// either as an argument or as an initializer:
+/// Must be used within an `@InternedStrings` enum.
 ///
 /// ```swift
-/// @Interned("value") static var name: String      // Argument form
-/// @Interned static var name: String = "value"     // Initializer form
+/// @Interned("_privateMethod") static var method: String
 /// ```
 @attached(peer)
-@attached(accessor)
 public macro Interned(_ value: String) =
-    #externalMacro(
-        module: "InternedStringsMacros",
-        type: "InternedMacro"
-    )
-
-/// Marks a property for string interning using an initializer value.
-@attached(peer)
-@attached(accessor)
-public macro Interned() =
     #externalMacro(
         module: "InternedStringsMacros",
         type: "InternedMacro"

@@ -1,13 +1,9 @@
-import Foundation
 import SwiftDiagnostics
 import SwiftSyntax
-import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-// MARK: - InternedStrings (Container Macro)
+// MARK: - InternedStrings
 
-/// Marks a type containing `@Interned` string properties.
-/// Generates a shared key and storage for all interned strings within the type.
 public struct InternedStringsMacro: MemberMacro {
     public static func expansion(
         of node: AttributeSyntax,
@@ -15,17 +11,20 @@ public struct InternedStringsMacro: MemberMacro {
         conformingTo protocols: [TypeSyntax],
         in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        let properties = collectInternedProperties(from: declaration)
-
-        guard !properties.isEmpty else {
-            return []
+        guard declaration.is(EnumDeclSyntax.self) else {
+            throw error(node, "@InternedStrings can only be applied to an enum")
         }
 
-        // Generate a truly random key at macro expansion time
+        let properties = try collectInternedProperties(from: declaration)
+
+        guard !properties.isEmpty else {
+            throw error(node, "@InternedStrings requires at least one @Interned property")
+        }
+
         let key = UInt64.random(in: .min ... .max)
 
         var declarations: [DeclSyntax] = [
-            "private static let _interned_k: UInt64 = \(literal: key)"
+            "private static let _k: UInt64 = \(literal: key)"
         ]
 
         for property in properties {
@@ -33,13 +32,13 @@ public struct InternedStringsMacro: MemberMacro {
             let bytesLiteral = formatBytesLiteral(obfuscatedBytes)
 
             declarations.append(
-                "private static let _interned_\(raw: property.name): [UInt8] = [\(raw: bytesLiteral)]"
+                "private static let _\(raw: property.name): [UInt8] = [\(raw: bytesLiteral)]"
             )
 
             declarations.append(
                 """
                 static var \(raw: property.name): String {
-                    SI.v(_interned_\(raw: property.name), _interned_k)
+                    SI.v(_\(raw: property.name), _k)
                 }
                 """
             )
@@ -52,28 +51,55 @@ public struct InternedStringsMacro: MemberMacro {
 
     private static func collectInternedProperties(
         from declaration: some DeclGroupSyntax
-    ) -> [(name: String, value: String)] {
-        declaration.memberBlock.members.compactMap { member -> (name: String, value: String)? in
+    ) throws -> [(name: String, value: String)] {
+        var properties: [(name: String, value: String)] = []
+
+        for member in declaration.memberBlock.members {
             guard let varDecl = member.decl.as(VariableDeclSyntax.self),
-                let binding = varDecl.bindings.first,
-                let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
-                let attribute = findInternedAttribute(in: varDecl.attributes),
-                let value = extractValue(from: attribute, binding: binding)
+                  let attribute = findInternedAttribute(in: varDecl.attributes)
             else {
-                return nil
+                continue
             }
 
-            return (identifier, value)
+            guard varDecl.bindings.count == 1, let binding = varDecl.bindings.first else {
+                throw error(attribute, "@Interned can only be applied to a single property")
+            }
+
+            guard varDecl.modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) }) else {
+                throw error(attribute, "@Interned property must be static")
+            }
+
+            guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
+                throw error(attribute, "@Interned requires 'var' (not 'let')")
+            }
+
+            guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
+                throw error(attribute, "@Interned requires a simple identifier")
+            }
+
+            guard binding.typeAnnotation != nil else {
+                throw error(attribute, "@Interned requires explicit type annotation ': String'")
+            }
+
+            guard binding.initializer == nil else {
+                throw error(attribute, "@Interned value must be in attribute argument, not initializer")
+            }
+
+            guard let value = extractValue(from: attribute) else {
+                throw error(attribute, "@Interned requires a string literal argument")
+            }
+
+            properties.append((identifier, value))
         }
+
+        return properties
     }
 
-    private static func findInternedAttribute(
-        in attributes: AttributeListSyntax
-    ) -> AttributeSyntax? {
+    private static func findInternedAttribute(in attributes: AttributeListSyntax) -> AttributeSyntax? {
         for attribute in attributes {
             guard let attr = attribute.as(AttributeSyntax.self),
-                let identifier = attr.attributeName.as(IdentifierTypeSyntax.self),
-                identifier.name.text == "Interned"
+                  let identifier = attr.attributeName.as(IdentifierTypeSyntax.self),
+                  identifier.name.text == "Interned"
             else {
                 continue
             }
@@ -82,54 +108,38 @@ public struct InternedStringsMacro: MemberMacro {
         return nil
     }
 
-    private static func extractValue(
-        from attribute: AttributeSyntax,
-        binding: PatternBindingSyntax
-    ) -> String? {
-        // Try attribute argument first: @Interned("value")
-        if let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
-            let first = arguments.first?.expression,
-            let literal = first.as(StringLiteralExprSyntax.self),
-            let segment = literal.segments.first?.as(StringSegmentSyntax.self)
-        {
-            return segment.content.text
+    private static func extractValue(from attribute: AttributeSyntax) -> String? {
+        guard let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
+              let first = arguments.first?.expression,
+              let literal = first.as(StringLiteralExprSyntax.self),
+              literal.segments.count == 1,
+              case let .stringSegment(segment) = literal.segments.first
+        else {
+            return nil
         }
-
-        // Fall back to initializer: @Interned var x = "value"
-        if let initializer = binding.initializer?.value,
-            let literal = initializer.as(StringLiteralExprSyntax.self),
-            let segment = literal.segments.first?.as(StringSegmentSyntax.self)
-        {
-            return segment.content.text
-        }
-
-        return nil
+        return segment.content.text
     }
 
-    // MARK: - Obfuscation (Encode)
+    // MARK: - Obfuscation
 
-    fileprivate static func obfuscate(string: String, key: UInt64) -> [UInt8] {
+    private static func obfuscate(string: String, key: UInt64) -> [UInt8] {
         let bytes = Array(string.utf8)
         let n = bytes.count
 
         guard n > 0 else { return [] }
 
-        // Generate permutation
         var shuffleGen = SplitMix64(seed: key ^ 0xA5A5_A5A5_A5A5_A5A5)
         var permutation = Array(0..<n)
 
         for i in stride(from: n - 1, through: 1, by: -1) {
-            let j = Int(shuffleGen.next() % UInt64(i + 1))
-            permutation.swapAt(i, j)
+            permutation.swapAt(i, Int(shuffleGen.next() % UInt64(i + 1)))
         }
 
-        // Permute bytes: permuted[i] = bytes[permutation[i]]
         var permuted = [UInt8](repeating: 0, count: n)
         for i in 0..<n {
             permuted[i] = bytes[permutation[i]]
         }
 
-        // XOR with keystream
         var streamGen = SplitMix64(seed: key ^ 0x5A5A_5A5A_5A5A_5A5A)
         var obfuscated = [UInt8](repeating: 0, count: n)
 
@@ -140,18 +150,16 @@ public struct InternedStringsMacro: MemberMacro {
         return obfuscated
     }
 
-    fileprivate static func formatBytesLiteral(_ bytes: [UInt8]) -> String {
+    private static func formatBytesLiteral(_ bytes: [UInt8]) -> String {
         bytes.map { "0x" + String($0, radix: 16, uppercase: true).paddedToTwo() }.joined(separator: ", ")
     }
 
-    // MARK: - PRNG (Compile-Time)
+    // MARK: - PRNG
 
     private struct SplitMix64 {
         private var state: UInt64
 
-        init(seed: UInt64) {
-            state = seed
-        }
+        init(seed: UInt64) { state = seed }
 
         mutating func next() -> UInt64 {
             state &+= 0x9E37_79B9_7F4A_7C15
@@ -161,129 +169,25 @@ public struct InternedStringsMacro: MemberMacro {
             return z ^ (z >> 31)
         }
     }
+
+    // MARK: - Diagnostics
+
+    private static func error(_ node: some SyntaxProtocol, _ message: String) -> DiagnosticsError {
+        DiagnosticsError(diagnostics: [
+            Diagnostic(node: Syntax(node), message: InternedDiagnostic(message))
+        ])
+    }
 }
 
-// MARK: - Interned
+// MARK: - Interned (Marker)
 
-public struct InternedMacro: AccessorMacro, PeerMacro {
+public struct InternedMacro: PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingPeersOf declaration: some DeclSyntaxProtocol,
-        in _: some MacroExpansionContext
+        in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        let model = try Model(attribute: node, declaration: declaration)
-
-        let key = UInt64.random(in: .min ... .max)
-        let obfuscatedBytes = InternedStringsMacro.obfuscate(string: model.plainText, key: key)
-        let bytesLiteral = InternedStringsMacro.formatBytesLiteral(obfuscatedBytes)
-
-        return [
-            DeclSyntax("private static let \(raw: model.keyIdentifier): UInt64 = \(literal: key)"),
-            DeclSyntax("private static let \(raw: model.bytesIdentifier): [UInt8] = [\(raw: bytesLiteral)]"),
-        ]
-    }
-
-    public static func expansion(
-        of node: AttributeSyntax,
-        providingAccessorsOf declaration: some DeclSyntaxProtocol,
-        in _: some MacroExpansionContext
-    ) throws -> [AccessorDeclSyntax] {
-        let model = try Model(attribute: node, declaration: declaration)
-
-        return [
-            AccessorDeclSyntax(
-                accessorSpecifier: .keyword(.get),
-                body: CodeBlockSyntax(
-                    leftBrace: .leftBraceToken(leadingTrivia: .spaces(1), trailingTrivia: .newlines(1)),
-                    statements: CodeBlockItemListSyntax {
-                        CodeBlockItemSyntax(
-                            item: .expr(
-                                ExprSyntax(
-                                    "SI.v(Self.\(raw: model.bytesIdentifier), Self.\(raw: model.keyIdentifier))"
-                                )
-                            )
-                        )
-                    },
-                    rightBrace: .rightBraceToken(leadingTrivia: .newlines(0), trailingTrivia: .newlines(1))
-                )
-            )
-        ]
-    }
-}
-
-extension InternedMacro {
-    fileprivate struct Model {
-        let plainText: String
-        let keyIdentifier: String
-        let bytesIdentifier: String
-
-        init(attribute: AttributeSyntax, declaration: some DeclSyntaxProtocol) throws {
-            guard let varDecl = declaration.as(VariableDeclSyntax.self),
-                  let binding = varDecl.bindings.first,
-                  varDecl.bindings.count == 1
-            else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned can only be applied to a single property"))
-                ])
-            }
-
-            guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires 'var' (not 'let')"))
-                ])
-            }
-
-            guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned can only be applied to identifier properties"))
-                ])
-            }
-
-            guard binding.typeAnnotation != nil else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires an explicit ': String' type"))
-                ])
-            }
-
-            plainText = try Self.extractPlainText(attribute: attribute, binding: binding)
-            keyIdentifier = "__interned_\(identifier)_k"
-            bytesIdentifier = "__interned_\(identifier)_d"
-        }
-
-        private static func extractPlainText(attribute: AttributeSyntax, binding: PatternBindingSyntax) throws -> String {
-            if let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
-               let first = arguments.first?.expression
-            {
-                return try extractStringLiteral(from: first, errorMessage: "@Interned argument must be a string literal")
-            }
-
-            if let initializerValue = binding.initializer?.value {
-                return try extractStringLiteral(from: initializerValue, errorMessage: "@Interned initializer must be a string literal")
-            }
-
-            throw DiagnosticsError(diagnostics: [
-                Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires a string value as argument or initializer"))
-            ])
-        }
-
-        private static func extractStringLiteral(from expr: ExprSyntax, errorMessage: String) throws -> String {
-            guard let literal = expr.as(StringLiteralExprSyntax.self) else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(expr), message: InternedDiagnostic(errorMessage))
-                ])
-            }
-
-            let segments = literal.segments
-            guard segments.count == 1,
-                  case let .stringSegment(segment) = segments.first
-            else {
-                throw DiagnosticsError(diagnostics: [
-                    Diagnostic(node: Syntax(expr), message: InternedDiagnostic(errorMessage))
-                ])
-            }
-
-            return segment.content.text
-        }
+        []
     }
 }
 
@@ -292,21 +196,19 @@ extension InternedMacro {
 private struct InternedDiagnostic: DiagnosticMessage {
     let message: String
 
-    init(_ message: String) {
-        self.message = message
-    }
+    init(_ message: String) { self.message = message }
 
     var diagnosticID: MessageID {
-        MessageID(domain: "InternedStringsMacros", id: "Interned")
+        MessageID(domain: "InternedStrings", id: "error")
     }
 
     var severity: DiagnosticSeverity { .error }
 }
 
-// MARK: - String Helpers
+// MARK: - Helpers
 
-extension String {
-    fileprivate func paddedToTwo() -> String {
+private extension String {
+    func paddedToTwo() -> String {
         count < 2 ? "0" + self : self
     }
 }
