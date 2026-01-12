@@ -8,13 +8,8 @@
 /// ```swift
 /// @InternedStrings
 /// enum Selectors {
-///     @Interned("_privateSetFrame:") static var setFrame: String
-///     @Interned("_privateGetBounds") static var getBounds: String
-/// }
-///
-/// @InternedStrings
-/// extension MyClass {
-///     @Interned("_privateMethod") static var privateMethod: String
+///     @Interned("_privateSetFrame:") static var setFrame
+///     @Interned var getBounds = "_privateGetBounds"
 /// }
 /// ```
 @attached(member, names: arbitrary)
@@ -26,13 +21,23 @@ public macro InternedStrings() =
 
 /// Marks a property for string interning.
 ///
-/// Must be used within an `@InternedStrings` enum.
+/// Must be used within an `@InternedStrings` container.
+/// Value can be provided as argument or initializer.
 ///
 /// ```swift
-/// @Interned("_privateMethod") static var method: String
+/// @Interned("value") static var name
+/// @Interned var name = "value"
 /// ```
 @attached(peer)
 public macro Interned(_ value: String) =
+    #externalMacro(
+        module: "InternedStringsMacros",
+        type: "InternedMacro"
+    )
+
+/// Marks a property for string interning using an initializer.
+@attached(peer)
+public macro Interned() =
     #externalMacro(
         module: "InternedStringsMacros",
         type: "InternedMacro"

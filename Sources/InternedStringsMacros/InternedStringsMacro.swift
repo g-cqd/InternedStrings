@@ -35,10 +35,14 @@ public struct InternedStringsMacro: MemberMacro {
                 "private static let _\(raw: property.name): [UInt8] = [\(raw: bytesLiteral)]"
             )
 
+            let accessPrefix = property.access.map { "\($0) " } ?? ""
+            let staticPrefix = property.isStatic ? "static " : ""
+            let selfPrefix = property.isStatic ? "" : "Self."
+
             declarations.append(
                 """
-                static var \(raw: property.name): String {
-                    SI.v(_\(raw: property.name), _k)
+                \(raw: accessPrefix)\(raw: staticPrefix)var \(raw: property.name): String {
+                    SI.v(\(raw: selfPrefix)_\(raw: property.name), \(raw: selfPrefix)_k)
                 }
                 """
             )
@@ -49,10 +53,17 @@ public struct InternedStringsMacro: MemberMacro {
 
     // MARK: - Property Collection
 
+    private struct InternedProperty {
+        let name: String
+        let value: String
+        let isStatic: Bool
+        let access: String?
+    }
+
     private static func collectInternedProperties(
         from declaration: some DeclGroupSyntax
-    ) throws -> [(name: String, value: String)] {
-        var properties: [(name: String, value: String)] = []
+    ) throws -> [InternedProperty] {
+        var properties: [InternedProperty] = []
 
         for member in declaration.memberBlock.members {
             guard let varDecl = member.decl.as(VariableDeclSyntax.self),
@@ -65,10 +76,6 @@ public struct InternedStringsMacro: MemberMacro {
                 throw error(attribute, "@Interned can only be applied to a single property")
             }
 
-            guard varDecl.modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) }) else {
-                throw error(attribute, "@Interned property must be static")
-            }
-
             guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
                 throw error(attribute, "@Interned requires 'var' (not 'let')")
             }
@@ -77,19 +84,19 @@ public struct InternedStringsMacro: MemberMacro {
                 throw error(attribute, "@Interned requires a simple identifier")
             }
 
-            guard binding.typeAnnotation != nil else {
-                throw error(attribute, "@Interned requires explicit type annotation ': String'")
+            guard let value = extractValue(from: attribute, binding: binding) else {
+                throw error(attribute, "@Interned requires a string literal (as argument or initializer)")
             }
 
-            guard binding.initializer == nil else {
-                throw error(attribute, "@Interned value must be in attribute argument, not initializer")
-            }
+            let isStatic = varDecl.modifiers.contains { $0.name.tokenKind == .keyword(.static) }
+            let access = extractAccessLevel(from: varDecl.modifiers)
 
-            guard let value = extractValue(from: attribute) else {
-                throw error(attribute, "@Interned requires a string literal argument")
-            }
-
-            properties.append((identifier, value))
+            properties.append(InternedProperty(
+                name: identifier,
+                value: value,
+                isStatic: isStatic,
+                access: access
+            ))
         }
 
         return properties
@@ -108,16 +115,45 @@ public struct InternedStringsMacro: MemberMacro {
         return nil
     }
 
-    private static func extractValue(from attribute: AttributeSyntax) -> String? {
-        guard let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
-              let first = arguments.first?.expression,
-              let literal = first.as(StringLiteralExprSyntax.self),
+    private static func extractValue(from attribute: AttributeSyntax, binding: PatternBindingSyntax) -> String? {
+        // Try attribute argument: @Interned("value")
+        if let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
+           let first = arguments.first?.expression,
+           let text = extractStringLiteral(from: first) {
+            return text
+        }
+
+        // Try initializer: @Interned var x = "value"
+        if let initializer = binding.initializer?.value,
+           let text = extractStringLiteral(from: initializer) {
+            return text
+        }
+
+        return nil
+    }
+
+    private static func extractStringLiteral(from expr: ExprSyntax) -> String? {
+        guard let literal = expr.as(StringLiteralExprSyntax.self),
               literal.segments.count == 1,
               case let .stringSegment(segment) = literal.segments.first
         else {
             return nil
         }
         return segment.content.text
+    }
+
+    private static func extractAccessLevel(from modifiers: DeclModifierListSyntax) -> String? {
+        for modifier in modifiers {
+            switch modifier.name.tokenKind {
+            case .keyword(.public): return "public"
+            case .keyword(.private): return "private"
+            case .keyword(.fileprivate): return "fileprivate"
+            case .keyword(.internal): return "internal"
+            case .keyword(.package): return "package"
+            default: continue
+            }
+        }
+        return nil
     }
 
     // MARK: - Obfuscation
