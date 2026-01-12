@@ -108,7 +108,7 @@ public struct InternedStringsMacro: MemberMacro {
 
     // MARK: - Obfuscation (Encode)
 
-    private static func obfuscate(string: String, key: UInt64) -> [UInt8] {
+    fileprivate static func obfuscate(string: String, key: UInt64) -> [UInt8] {
         let bytes = Array(string.utf8)
         let n = bytes.count
 
@@ -140,7 +140,7 @@ public struct InternedStringsMacro: MemberMacro {
         return obfuscated
     }
 
-    private static func formatBytesLiteral(_ bytes: [UInt8]) -> String {
+    fileprivate static func formatBytesLiteral(_ bytes: [UInt8]) -> String {
         bytes.map { "0x" + String($0, radix: 16, uppercase: true).paddedToTwo() }.joined(separator: ", ")
     }
 
@@ -163,62 +163,127 @@ public struct InternedStringsMacro: MemberMacro {
     }
 }
 
-// MARK: - Interned (Property Marker Macro)
+// MARK: - Interned
 
-/// Marks a property for string interning within an `@InternedStrings` container.
-/// The macro itself is a no-op; `@InternedStrings` scans for these markers.
-public struct InternedMacro: PeerMacro {
+public struct InternedMacro: AccessorMacro, PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingPeersOf declaration: some DeclSyntaxProtocol,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        // Validate usage
-        guard let varDecl = declaration.as(VariableDeclSyntax.self),
-            let binding = varDecl.bindings.first,
-            varDecl.bindings.count == 1
-        else {
-            throw DiagnosticsError(diagnostics: [
-                Diagnostic(
-                    node: Syntax(node),
-                    message: InternedDiagnostic("@Interned can only be applied to a single property")
+        let model = try Model(attribute: node, declaration: declaration)
+
+        let key = UInt64.random(in: .min ... .max)
+        let obfuscatedBytes = InternedStringsMacro.obfuscate(string: model.plainText, key: key)
+        let bytesLiteral = InternedStringsMacro.formatBytesLiteral(obfuscatedBytes)
+
+        return [
+            DeclSyntax("private static let \(raw: model.keyIdentifier): UInt64 = \(literal: key)"),
+            DeclSyntax("private static let \(raw: model.bytesIdentifier): [UInt8] = [\(raw: bytesLiteral)]"),
+        ]
+    }
+
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingAccessorsOf declaration: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
+    ) throws -> [AccessorDeclSyntax] {
+        let model = try Model(attribute: node, declaration: declaration)
+
+        return [
+            AccessorDeclSyntax(
+                accessorSpecifier: .keyword(.get),
+                body: CodeBlockSyntax(
+                    leftBrace: .leftBraceToken(leadingTrivia: .spaces(1), trailingTrivia: .newlines(1)),
+                    statements: CodeBlockItemListSyntax {
+                        CodeBlockItemSyntax(
+                            item: .expr(
+                                ExprSyntax(
+                                    "SI.v(Self.\(raw: model.bytesIdentifier), Self.\(raw: model.keyIdentifier))"
+                                )
+                            )
+                        )
+                    },
+                    rightBrace: .rightBraceToken(leadingTrivia: .newlines(0), trailingTrivia: .newlines(1))
                 )
+            )
+        ]
+    }
+}
+
+extension InternedMacro {
+    fileprivate struct Model {
+        let plainText: String
+        let keyIdentifier: String
+        let bytesIdentifier: String
+
+        init(attribute: AttributeSyntax, declaration: some DeclSyntaxProtocol) throws {
+            guard let varDecl = declaration.as(VariableDeclSyntax.self),
+                  let binding = varDecl.bindings.first,
+                  varDecl.bindings.count == 1
+            else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned can only be applied to a single property"))
+                ])
+            }
+
+            guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires 'var' (not 'let')"))
+                ])
+            }
+
+            guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned can only be applied to identifier properties"))
+                ])
+            }
+
+            guard binding.typeAnnotation != nil else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires an explicit ': String' type"))
+                ])
+            }
+
+            plainText = try Self.extractPlainText(attribute: attribute, binding: binding)
+            keyIdentifier = "__interned_\(identifier)_k"
+            bytesIdentifier = "__interned_\(identifier)_d"
+        }
+
+        private static func extractPlainText(attribute: AttributeSyntax, binding: PatternBindingSyntax) throws -> String {
+            if let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
+               let first = arguments.first?.expression
+            {
+                return try extractStringLiteral(from: first, errorMessage: "@Interned argument must be a string literal")
+            }
+
+            if let initializerValue = binding.initializer?.value {
+                return try extractStringLiteral(from: initializerValue, errorMessage: "@Interned initializer must be a string literal")
+            }
+
+            throw DiagnosticsError(diagnostics: [
+                Diagnostic(node: Syntax(attribute), message: InternedDiagnostic("@Interned requires a string value as argument or initializer"))
             ])
         }
 
-        guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
-            throw DiagnosticsError(diagnostics: [
-                Diagnostic(
-                    node: Syntax(node),
-                    message: InternedDiagnostic("@Interned requires 'var' (not 'let')")
-                )
-            ])
+        private static func extractStringLiteral(from expr: ExprSyntax, errorMessage: String) throws -> String {
+            guard let literal = expr.as(StringLiteralExprSyntax.self) else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(expr), message: InternedDiagnostic(errorMessage))
+                ])
+            }
+
+            let segments = literal.segments
+            guard segments.count == 1,
+                  case let .stringSegment(segment) = segments.first
+            else {
+                throw DiagnosticsError(diagnostics: [
+                    Diagnostic(node: Syntax(expr), message: InternedDiagnostic(errorMessage))
+                ])
+            }
+
+            return segment.content.text
         }
-
-        guard binding.pattern.as(IdentifierPatternSyntax.self) != nil else {
-            throw DiagnosticsError(diagnostics: [
-                Diagnostic(
-                    node: Syntax(node),
-                    message: InternedDiagnostic("@Interned can only be applied to identifier properties")
-                )
-            ])
-        }
-
-        // Ensure a value is provided
-        let hasAttributeValue = node.arguments?.as(LabeledExprListSyntax.self)?.first != nil
-        let hasInitializer = binding.initializer != nil
-
-        guard hasAttributeValue || hasInitializer else {
-            throw DiagnosticsError(diagnostics: [
-                Diagnostic(
-                    node: Syntax(node),
-                    message: InternedDiagnostic("@Interned requires a string value as argument or initializer")
-                )
-            ])
-        }
-
-        // No peer declarations needed; @InternedStrings handles generation
-        return []
     }
 }
 

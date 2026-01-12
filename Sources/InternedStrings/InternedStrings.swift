@@ -31,6 +31,7 @@ public macro InternedStrings() =
 /// @Interned static var name: String = "value"     // Initializer form
 /// ```
 @attached(peer)
+@attached(accessor)
 public macro Interned(_ value: String) =
     #externalMacro(
         module: "InternedStringsMacros",
@@ -39,6 +40,7 @@ public macro Interned(_ value: String) =
 
 /// Marks a property for string interning using an initializer value.
 @attached(peer)
+@attached(accessor)
 public macro Interned() =
     #externalMacro(
         module: "InternedStringsMacros",
