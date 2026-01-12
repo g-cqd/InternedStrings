@@ -14,6 +14,7 @@ Annotate a container with `@InternedStrings` and mark properties with `@Interned
 - **Single Shared Key**: One key per container, minimal storage overhead.
 - **O(n) Decode**: Runtime reconstruction scales linearly with string length.
 - **Lightweight Runtime**: Single `SI.v([UInt8], UInt64) -> String` function.
+- **Flexible API**: Supports static/instance properties, access levels, argument/initializer forms.
 
 ## Requirements
 
@@ -41,28 +42,57 @@ Then add it to your target:
 
 ## Usage
 
+### Basic
+
 ```swift
 import InternedStrings
 
 @InternedStrings
 enum Selectors {
-    // Argument form
     @Interned("_privateSetFrame:") static var setFrame
-
-    // Initializer form
-    @Interned static var getBounds = "_privateGetBounds"
-
-    // With access level
-    @Interned("_internalMethod") public static var internalMethod
-
-    // Instance property (accesses static storage)
-    @Interned("_instanceValue") var instanceValue
+    @Interned("_privateGetBounds") static var getBounds
 }
 
 print(Selectors.setFrame)  // "_privateSetFrame:"
 ```
 
-Works on extensions too:
+### Argument vs Initializer Form
+
+```swift
+@InternedStrings
+enum S {
+    // Argument form
+    @Interned("value") static var a
+
+    // Initializer form
+    @Interned static var b = "value"
+}
+```
+
+### Access Levels
+
+```swift
+@InternedStrings
+enum S {
+    @Interned("x") public static var publicProp
+    @Interned("y") private static var privateProp
+    @Interned("z") internal static var internalProp
+}
+```
+
+### Instance Properties
+
+Instance properties access shared static storage:
+
+```swift
+@InternedStrings
+enum S {
+    @Interned("static") static var staticProp
+    @Interned("instance") var instanceProp  // accesses Self._instanceProp
+}
+```
+
+### Extensions
 
 ```swift
 @InternedStrings
@@ -99,6 +129,22 @@ enum S {
 - Container must be an `enum` or `extension`
 - Properties must be `var` (not `let`)
 - Value must be a string literal (as argument or initializer)
+
+## Testing
+
+The package includes comprehensive tests covering:
+
+- **Roundtrip**: Empty, ASCII, Unicode/emoji, long strings, single character
+- **Determinism**: Same key → same output, different keys → different output
+- **Obfuscation Quality**: Output differs from input, no plaintext leakage
+- **Macro Expansion**: Static/instance properties, access levels, extensions, mixed forms
+- **Diagnostics**: Error messages for invalid usage
+
+Run tests with:
+
+```bash
+swift test
+```
 
 ## Disclaimer
 
