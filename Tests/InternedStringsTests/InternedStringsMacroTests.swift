@@ -429,7 +429,7 @@ private func assertMacroExpansion(
     macros: [String: Macro.Type],
     indentationWidth: Trivia = .spaces(4),
     matchesPattern: Bool = false,
-    file: StaticString = #file,
+    file: StaticString = #filePath,
     line: UInt = #line
 ) {
     if matchesPattern {
