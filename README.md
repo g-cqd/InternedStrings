@@ -2,7 +2,7 @@
 
 A Swift macro package for compile-time string obfuscation.
 
-Annotate a container with `@InternedStrings` and mark properties with `@Interned("value")`. At compile time the macro:
+Annotate a container with `@InternedStrings` and mark properties with `@Interned`. At compile time the macro:
 
 - generates a random 64-bit key shared across all properties,
 - obfuscates each string using permutation + XOR keystream, and
@@ -46,8 +46,17 @@ import InternedStrings
 
 @InternedStrings
 enum Selectors {
-    @Interned("_privateSetFrame:") static var setFrame: String
-    @Interned("_privateGetBounds") static var getBounds: String
+    // Argument form
+    @Interned("_privateSetFrame:") static var setFrame
+
+    // Initializer form
+    @Interned static var getBounds = "_privateGetBounds"
+
+    // With access level
+    @Interned("_internalMethod") public static var internalMethod
+
+    // Instance property (accesses static storage)
+    @Interned("_instanceValue") var instanceValue
 }
 
 print(Selectors.setFrame)  // "_privateSetFrame:"
@@ -58,7 +67,7 @@ Works on extensions too:
 ```swift
 @InternedStrings
 extension MyClass {
-    @Interned("_internalMethod") static var internalMethod: String
+    @Interned("_privateAPI") static var privateAPI
 }
 ```
 
@@ -68,7 +77,8 @@ extension MyClass {
 ```swift
 @InternedStrings
 enum S {
-    @Interned("secret") static var secret: String
+    @Interned("secret") public static var secret
+    @Interned var instance = "value"
 }
 ```
 
@@ -77,16 +87,18 @@ enum S {
 enum S {
     private static let _k: UInt64 = 0x...
     private static let _secret: [UInt8] = [0x.., 0x.., ...]
-    static var secret: String { SI.v(_secret, _k) }
+    private static let _instance: [UInt8] = [0x.., 0x.., ...]
+
+    public static var secret: String { SI.v(_secret, _k) }
+    var instance: String { SI.v(Self._instance, Self._k) }
 }
 ```
 
 ## Constraints
 
 - Container must be an `enum` or `extension`
-- Properties must be `static var` with explicit `: String` type
-- Value must be a string literal in the attribute: `@Interned("value")`
-- No initializers: `@Interned static var x: String = "value"` is not allowed
+- Properties must be `var` (not `let`)
+- Value must be a string literal (as argument or initializer)
 
 ## Disclaimer
 
