@@ -3,25 +3,25 @@ import CompilerPluginSupport
 import PackageDescription
 
 private let package = Package(
-    name: "PrivateAPI",
+    name: "InternedStrings",
     platforms: [
-        .iOS(.v18),
-        .macOS(.v15),
+        .iOS(.v14),
+        .macOS(.v11),
     ],
     products: [
         .library(
-            name: "PrivateAPI",
+            name: "InternedStrings",
             targets: [
-                "PrivateAPI"
+                "InternedStrings"
             ]
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "602.0.0")
     ],
     targets: [
         .macro(
-            name: "PrivateAPIMacros",
+            name: "InternedStringsMacros",
             dependencies: [
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftDiagnostics", package: "swift-syntax"),
@@ -31,17 +31,17 @@ private let package = Package(
             ]
         ),
         .target(
-            name: "PrivateAPI",
+            name: "InternedStrings",
             dependencies: [
-                "PrivateAPIMacros"
+                "InternedStringsMacros"
             ],
             swiftSettings: swiftSettings
         ),
         .testTarget(
-            name: "PrivateAPITests",
+            name: "InternedStringsTests",
             dependencies: [
-                "PrivateAPI",
-                "PrivateAPIMacros",
+                "InternedStrings",
+                "InternedStringsMacros",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ],
             swiftSettings: swiftSettings
