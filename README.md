@@ -1,21 +1,25 @@
-# PrivateAPI
+# InternedStrings
 
-A Swift Macro for obfuscating sensitive string literals in your compiled binary.
+A Swift macro package that generates interned, obfuscated string accessors.
 
-`PrivateAPI` automatically encodes your string literals (like API keys, secrets, or endpoints) into Base64 at compile time. This prevents them from appearing as plain text in your application binary, protecting them from casual inspection tools like the `strings` command or basic hex editors.
+Annotate a container type with `@InternedStrings` and mark each string with `@Interned`. At compile time the macro:
+
+- picks a random 64-bit key,
+- obfuscates each UTF-8 byte payload using a deterministic permutation + XOR keystream, and
+- generates `static` computed properties that reconstruct the original string on access.
 
 ## Features
 
-- **Compile-Time Obfuscation**: Strings are converted to Base64 during compilation; the original plain text never enters the binary.
-- **Zero Boilerplate**: simply attach the `@PrivateAPI` macro to your property.
-- **Runtime Decoding**: Values are decoded on-the-fly when accessed.
-- **Swift 6 Ready**: Built with strict concurrency and memory safety in mind.
+- **Compile-Time Obfuscation**: No plaintext string literal is emitted in source expansion.
+- **Deterministic Decode**: Runtime reconstruction is `O(n)` over the byte count.
+- **Batch-Friendly**: One shared key per container type.
+- **SwiftPM-Friendly**: Runtime is a tiny `SI.v([UInt8], UInt64) -> String` helper.
 
 ## Requirements
 
 - Swift 6.2+
-- iOS 18.0+
-- macOS 15.0+
+- iOS 14.0+
+- macOS 11.0+
 
 ## Installation
 
@@ -27,37 +31,54 @@ dependencies: [
 ]
 ```
 
+Then add the product to your target:
+
+```swift
+.target(
+    name: "MyTarget",
+    dependencies: [
+        .product(name: "InternedStrings", package: "InternedStrings"),
+    ]
+)
+```
+
 ## Usage
 
-You can use `@PrivateAPI` in two ways: passing the string as an argument or assigning it as an initializer.
+Use `@InternedStrings` on a container and `@Interned` on each property.
 
 ### 1. As an Argument
 
 ```swift
-import PrivateAPI
+import InternedStrings
 
-struct Secrets {
-    @PrivateAPI("sk_live_123456789")
-    var apiKey: String
+@InternedStrings
+enum PrivateStrings {
+    @Interned("CAFilter") static var filterClassName: String
 }
 
 // Usage
-print(Secrets().apiKey) // "sk_live_123456789"
+print(PrivateStrings.filterClassName) // "CAFilter"
 ```
 
 ### 2. As an Initializer
 
 ```swift
-import PrivateAPI
+import InternedStrings
 
-struct Config {
-    @PrivateAPI
-    var endpoint: String = "https://api.secret-service.com/v1"
+@InternedStrings
+enum PrivateStrings {
+    @Interned static var filterMethodName: String = "filterWithType:"
 }
 
 // Usage
-print(Config().endpoint) // "https://api.secret-service.com/v1"
+print(PrivateStrings.filterMethodName) // "filterWithType:"
 ```
+
+## Notes
+
+- `@Interned` requires `var` (not `let`).
+- `@Interned` requires a string literal argument or initializer (no interpolation).
+- `@InternedStrings` currently generates `static` accessors; use `static var`.
 
 ## How It Works
 
@@ -65,19 +86,20 @@ The macro expands your code at compile time.
 
 **Source Code:**
 ```swift
-@PrivateAPI
-var secret: String = "MyHiddenSecret"
+@InternedStrings
+enum Selectors {
+    @Interned("_privateSetFrame:") static var setFrame: String
+}
 ```
 
 **Expanded Code (Simplified):**
 ```swift
-var secret: String {
-    get {
-        PrivateAPIDecoder.decode(Self.__privateAPI_secret_base64)
-    }
-}
+private static let _interned_k: UInt64 = 1234567890
+private static let _interned_setFrame: [UInt8] = [0xA1, 0xB2, 0xC3]
 
-private static let __privateAPI_secret_base64 = "TXlIaWRkZW5TZWNyZXQ=" // Base64 representation
+static var setFrame: String {
+    SI.v(_interned_setFrame, _interned_k)
+}
 ```
 
 ## Disclaimer

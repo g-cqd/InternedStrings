@@ -2,8 +2,8 @@ import SwiftCompilerPlugin
 import SwiftSyntaxMacros
 
 @main
-struct PrivateAPIPlugin: CompilerPlugin {
+struct InternedStringsPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-        PrivateAPIMacro.self
+        InternedStringsMacro.self
     ]
 }
