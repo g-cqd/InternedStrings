@@ -2,19 +2,19 @@
 
 A Swift macro package for compile-time string obfuscation.
 
-Annotate a container with `@InternedStrings` and mark properties with `@Interned`. At compile time the macro:
+Mark properties with `@Interned` and at compile time the macro:
 
-- generates a random 64-bit key shared across all properties,
-- obfuscates each string using permutation + XOR keystream, and
-- emits computed properties that reconstruct the original string on access.
+- generates a random 64-bit key per property,
+- obfuscates the string using permutation + XOR keystream, and
+- emits a computed getter that reconstructs the original string on access.
 
 ## Features
 
-- **Compile-Time Obfuscation**: No plaintext literals in the expanded source.
-- **Single Shared Key**: One key per container, minimal storage overhead.
+- **Compile-Time Obfuscation**: No plaintext literals in the binary.
+- **Simple API**: Just add `@Interned` to any string property.
 - **O(n) Decode**: Runtime reconstruction scales linearly with string length.
 - **Lightweight Runtime**: Single `SI.v([UInt8], UInt64) -> String` function.
-- **Flexible API**: Supports static/instance properties, access levels, argument/initializer forms.
+- **Flexible Forms**: Supports argument form `@Interned("value")` or initializer form `@Interned var x = "value"`.
 
 ## Requirements
 
@@ -47,10 +47,9 @@ Then add it to your target:
 ```swift
 import InternedStrings
 
-@InternedStrings
 enum Selectors {
-    @Interned("_privateSetFrame:") static var setFrame
-    @Interned("_privateGetBounds") static var getBounds
+    @Interned static var setFrame = "_privateSetFrame:"
+    @Interned("_privateGetBounds") static var getBounds: String
 }
 
 print(Selectors.setFrame)  // "_privateSetFrame:"
@@ -59,76 +58,46 @@ print(Selectors.setFrame)  // "_privateSetFrame:"
 ### Argument vs Initializer Form
 
 ```swift
-@InternedStrings
-enum S {
-    // Argument form
-    @Interned("value") static var a
+// Argument form - value in macro parameter
+@Interned("value") static var a: String
 
-    // Initializer form
-    @Interned static var b = "value"
-}
-```
-
-### Access Levels
-
-```swift
-@InternedStrings
-enum S {
-    @Interned("x") public static var publicProp
-    @Interned("y") private static var privateProp
-    @Interned("z") internal static var internalProp
-}
+// Initializer form - value as property initializer
+@Interned static var b = "value"
 ```
 
 ### Instance Properties
 
-Instance properties access shared static storage:
-
 ```swift
-@InternedStrings
-enum S {
-    @Interned("static") static var staticProp
-    @Interned("instance") var instanceProp  // accesses Self._instanceProp
+struct MyStruct {
+    @Interned var message = "Hello, World!"
 }
-```
 
-### Extensions
-
-```swift
-@InternedStrings
-extension MyClass {
-    @Interned("_privateAPI") static var privateAPI
-}
+let s = MyStruct()
+print(s.message)  // "Hello, World!"
 ```
 
 ## Expansion
 
 **Source:**
 ```swift
-@InternedStrings
-enum S {
-    @Interned("secret") public static var secret
-    @Interned var instance = "value"
-}
+@Interned static var secret = "password123"
 ```
 
 **Expands to:**
 ```swift
-enum S {
-    private static let _k: UInt64 = 0x...
-    private static let _secret: [UInt8] = [0x.., 0x.., ...]
-    private static let _instance: [UInt8] = [0x.., 0x.., ...]
-
-    public static var secret: String { SI.v(_secret, _k) }
-    var instance: String { SI.v(Self._instance, Self._k) }
+static var secret = "password123" {
+    get {
+        SI.v([0x2A, 0x7F, ...], 0x1234567890ABCDEF)
+    }
 }
 ```
 
+The initializer is syntactically present but semantically ignored because the getter provides the value.
+
 ## Constraints
 
-- Container must be an `enum` or `extension`
-- Properties must be `var` (not `let`)
 - Value must be a string literal (as argument or initializer)
+- Cannot be applied to computed properties (already have getters)
 
 ## Testing
 
@@ -137,7 +106,7 @@ The package includes comprehensive tests covering:
 - **Roundtrip**: Empty, ASCII, Unicode/emoji, long strings, single character
 - **Determinism**: Same key → same output, different keys → different output
 - **Obfuscation Quality**: Output differs from input, no plaintext leakage
-- **Macro Expansion**: Static/instance properties, access levels, extensions, mixed forms
+- **Macro Expansion**: Argument/initializer forms, static/instance properties
 - **Diagnostics**: Error messages for invalid usage
 
 Run tests with:

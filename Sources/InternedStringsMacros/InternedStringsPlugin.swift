@@ -4,7 +4,6 @@ import SwiftSyntaxMacros
 @main
 struct InternedStringsPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-        InternedStringsMacro.self,
         InternedMacro.self,
     ]
 }

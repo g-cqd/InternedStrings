@@ -7,7 +7,6 @@ import Testing
 @testable import InternedStringsMacros
 
 private let testMacros: [String: Macro.Type] = [
-    "InternedStrings": InternedStringsMacro.self,
     "Interned": InternedMacro.self,
 ]
 
@@ -130,205 +129,75 @@ struct ObfuscationQualityTests {
 
 @Suite("Macro Expansion")
 struct MacroExpansionTests {
-    @Test("Static property with argument form")
-    func staticArgumentForm() {
+    @Test("Property with argument form")
+    func argumentForm() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-                @Interned("hello") static var greeting
-            }
+            @Interned("hello") static var greeting: String
             """,
             expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _greeting: [UInt8] = [$BYTES$]
-                nonisolated static var greeting: String {
-                    SI.v(_greeting, _k)
+            static var greeting: String {
+                get {
+                    SI.v([$BYTES$], $KEY$)
                 }
             }
             """,
             macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
+            indentationWidth: .spaces(4)
         )
     }
 
-    @Test("Static property with initializer form")
-    func staticInitializerForm() {
+    @Test("Property with initializer form")
+    func initializerForm() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-                @Interned static var greeting = "hello"
-            }
+            @Interned static var greeting = "hello"
             """,
             expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _greeting: [UInt8] = [$BYTES$]
-                nonisolated static var greeting: String {
-                    SI.v(_greeting, _k)
+            static var greeting = "hello" {
+                get {
+                    SI.v([$BYTES$], $KEY$)
                 }
             }
             """,
             macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
+            indentationWidth: .spaces(4)
         )
     }
 
-    @Test("Instance property accesses static storage")
+    @Test("Instance property")
     func instanceProperty() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-                @Interned("value") var instance
-            }
+            @Interned("value") var instance: String
             """,
             expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _instance: [UInt8] = [$BYTES$]
-                nonisolated var instance: String {
-                    SI.v(Self._instance, Self._k)
+            var instance: String {
+                get {
+                    SI.v([$BYTES$], $KEY$)
                 }
             }
             """,
             macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
+            indentationWidth: .spaces(4)
         )
     }
 
-    @Test("Public access level preserved")
-    func publicAccessLevel() {
+    @Test("Let binding works")
+    func letBindingWorks() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-                @Interned("value") public static var publicProp
-            }
+            @Interned("x") static let x: String
             """,
             expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _publicProp: [UInt8] = [$BYTES$]
-                nonisolated public static var publicProp: String {
-                    SI.v(_publicProp, _k)
+            static let x: String {
+                get {
+                    SI.v([$BYTES$], $KEY$)
                 }
             }
             """,
             macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
-        )
-    }
-
-    @Test("Private access level preserved")
-    func privateAccessLevel() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            enum S {
-                @Interned("value") private static var privateProp
-            }
-            """,
-            expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _privateProp: [UInt8] = [$BYTES$]
-                nonisolated private static var privateProp: String {
-                    SI.v(_privateProp, _k)
-                }
-            }
-            """,
-            macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
-        )
-    }
-
-    @Test("Multiple properties share key")
-    func multipleProperties() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            enum S {
-                @Interned("a") static var a
-                @Interned("b") static var b
-            }
-            """,
-            expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _a: [UInt8] = [$BYTES$]
-                nonisolated static var a: String {
-                    SI.v(_a, _k)
-                }
-                private static let _b: [UInt8] = [$BYTES$]
-                nonisolated static var b: String {
-                    SI.v(_b, _k)
-                }
-            }
-            """,
-            macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
-        )
-    }
-
-    @Test("Extension support")
-    func extensionSupport() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            extension String {
-                @Interned("value") static var extended
-            }
-            """,
-            expandedSource: """
-            extension String {
-                private static let _k: UInt64 = $KEY$
-                private static let _extended: [UInt8] = [$BYTES$]
-                nonisolated static var extended: String {
-                    SI.v(_extended, _k)
-                }
-            }
-            """,
-            macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
-        )
-    }
-
-    @Test("Mixed static and instance properties")
-    func mixedStaticAndInstance() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            enum S {
-                @Interned("static") static var staticProp
-                @Interned("instance") var instanceProp
-            }
-            """,
-            expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _staticProp: [UInt8] = [$BYTES$]
-                nonisolated static var staticProp: String {
-                    SI.v(_staticProp, _k)
-                }
-                private static let _instanceProp: [UInt8] = [$BYTES$]
-                nonisolated var instanceProp: String {
-                    SI.v(Self._instanceProp, Self._k)
-                }
-            }
-            """,
-            macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
+            indentationWidth: .spaces(4)
         )
     }
 }
@@ -337,86 +206,33 @@ struct MacroExpansionTests {
 
 @Suite("Diagnostics")
 struct DiagnosticTests {
-    @Test("Error on struct container")
-    func errorOnStruct() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            struct S {
-                @Interned("x") static var x
-            }
-            """,
-            expandedSource: """
-            struct S {
-                @Interned("x") static var x
-            }
-            """,
-            diagnostics: [
-                DiagnosticSpec(message: "@InternedStrings can only be applied to an enum or extension", line: 1, column: 1)
-            ],
-            macros: testMacros
-        )
-    }
-
-    @Test("Let binding works")
-    func letBindingWorks() {
-        assertMacroExpansion(
-            """
-            @InternedStrings
-            enum S {
-                @Interned("x") static let x
-            }
-            """,
-            expandedSource: """
-            enum S {
-                private static let _k: UInt64 = $KEY$
-                private static let _x: [UInt8] = [$BYTES$]
-                nonisolated static var x: String {
-                    SI.v(_x, _k)
-                }
-            }
-            """,
-            macros: testMacros,
-            indentationWidth: .spaces(4),
-            matchesPattern: true
-        )
-    }
-
     @Test("Error on missing value")
     func errorOnMissingValue() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-                @Interned static var x
-            }
+            @Interned static var x: String
             """,
             expandedSource: """
-            enum S {
-                static var x
-            }
+            static var x: String
             """,
             diagnostics: [
-                DiagnosticSpec(message: "@Interned requires a string literal (as argument or initializer)", line: 3, column: 5)
+                DiagnosticSpec(message: "@Interned requires a string literal (as argument or initializer)", line: 1, column: 1)
             ],
             macros: testMacros
         )
     }
 
-    @Test("Error on empty container")
-    func errorOnEmptyContainer() {
+    @Test("Error on computed property")
+    func errorOnComputedProperty() {
         assertMacroExpansion(
             """
-            @InternedStrings
-            enum S {
-            }
+            @Interned("x") static var x: String { "y" }
             """,
             expandedSource: """
-            enum S {
-            }
+            static var x: String { "y" }
             """,
             diagnostics: [
-                DiagnosticSpec(message: "@InternedStrings requires at least one @Interned property", line: 1, column: 1)
+                DiagnosticSpec(message: "@Interned cannot be applied to a computed property", line: 1, column: 1)
             ],
             macros: testMacros
         )
@@ -431,33 +247,18 @@ private func assertMacroExpansion(
     diagnostics: [DiagnosticSpec] = [],
     macros: [String: Macro.Type],
     indentationWidth: Trivia = .spaces(4),
-    matchesPattern: Bool = false,
     file: StaticString = #filePath,
     line: UInt = #line
 ) {
-    if matchesPattern {
-        // For pattern matching, we just verify it compiles and produces output
-        // The actual values (key, bytes) are random so we can't match exactly
-        SwiftSyntaxMacrosTestSupport.assertMacroExpansion(
-            originalSource,
-            expandedSource: expandedSource,
-            diagnostics: diagnostics,
-            macros: macros,
-            indentationWidth: indentationWidth,
-            file: file,
-            line: line
-        )
-    } else {
-        SwiftSyntaxMacrosTestSupport.assertMacroExpansion(
-            originalSource,
-            expandedSource: expandedSource,
-            diagnostics: diagnostics,
-            macros: macros,
-            indentationWidth: indentationWidth,
-            file: file,
-            line: line
-        )
-    }
+    SwiftSyntaxMacrosTestSupport.assertMacroExpansion(
+        originalSource,
+        expandedSource: expandedSource,
+        diagnostics: diagnostics,
+        macros: macros,
+        indentationWidth: indentationWidth,
+        file: file,
+        line: line
+    )
 }
 
 // MARK: - Test Obfuscator
