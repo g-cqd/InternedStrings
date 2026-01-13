@@ -143,7 +143,7 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _greeting: [UInt8] = [$BYTES$]
-                static var greeting: String {
+                nonisolated static var greeting: String {
                     SI.v(_greeting, _k)
                 }
             }
@@ -167,7 +167,7 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _greeting: [UInt8] = [$BYTES$]
-                static var greeting: String {
+                nonisolated static var greeting: String {
                     SI.v(_greeting, _k)
                 }
             }
@@ -191,7 +191,7 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _instance: [UInt8] = [$BYTES$]
-                var instance: String {
+                nonisolated var instance: String {
                     SI.v(Self._instance, Self._k)
                 }
             }
@@ -215,7 +215,7 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _publicProp: [UInt8] = [$BYTES$]
-                public static var publicProp: String {
+                nonisolated public static var publicProp: String {
                     SI.v(_publicProp, _k)
                 }
             }
@@ -239,7 +239,7 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _privateProp: [UInt8] = [$BYTES$]
-                private static var privateProp: String {
+                nonisolated private static var privateProp: String {
                     SI.v(_privateProp, _k)
                 }
             }
@@ -264,11 +264,11 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _a: [UInt8] = [$BYTES$]
-                static var a: String {
+                nonisolated static var a: String {
                     SI.v(_a, _k)
                 }
                 private static let _b: [UInt8] = [$BYTES$]
-                static var b: String {
+                nonisolated static var b: String {
                     SI.v(_b, _k)
                 }
             }
@@ -292,7 +292,7 @@ struct MacroExpansionTests {
             extension String {
                 private static let _k: UInt64 = $KEY$
                 private static let _extended: [UInt8] = [$BYTES$]
-                static var extended: String {
+                nonisolated static var extended: String {
                     SI.v(_extended, _k)
                 }
             }
@@ -317,11 +317,11 @@ struct MacroExpansionTests {
             enum S {
                 private static let _k: UInt64 = $KEY$
                 private static let _staticProp: [UInt8] = [$BYTES$]
-                static var staticProp: String {
+                nonisolated static var staticProp: String {
                     SI.v(_staticProp, _k)
                 }
                 private static let _instanceProp: [UInt8] = [$BYTES$]
-                var instanceProp: String {
+                nonisolated var instanceProp: String {
                     SI.v(Self._instanceProp, Self._k)
                 }
             }
@@ -358,8 +358,8 @@ struct DiagnosticTests {
         )
     }
 
-    @Test("Error on let binding")
-    func errorOnLet() {
+    @Test("Let binding works")
+    func letBindingWorks() {
         assertMacroExpansion(
             """
             @InternedStrings
@@ -369,13 +369,16 @@ struct DiagnosticTests {
             """,
             expandedSource: """
             enum S {
-                static let x
+                private static let _k: UInt64 = $KEY$
+                private static let _x: [UInt8] = [$BYTES$]
+                nonisolated static var x: String {
+                    SI.v(_x, _k)
+                }
             }
             """,
-            diagnostics: [
-                DiagnosticSpec(message: "@Interned requires 'var' (not 'let')", line: 3, column: 5)
-            ],
-            macros: testMacros
+            macros: testMacros,
+            indentationWidth: .spaces(4),
+            matchesPattern: true
         )
     }
 

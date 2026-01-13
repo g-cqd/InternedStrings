@@ -41,7 +41,7 @@ public struct InternedStringsMacro: MemberMacro {
 
             declarations.append(
                 """
-                \(raw: accessPrefix)\(raw: staticPrefix)var \(raw: property.name): String {
+                nonisolated \(raw: accessPrefix)\(raw: staticPrefix)var \(raw: property.name): String {
                     SI.v(\(raw: selfPrefix)_\(raw: property.name), \(raw: selfPrefix)_k)
                 }
                 """
@@ -74,10 +74,6 @@ public struct InternedStringsMacro: MemberMacro {
 
             guard varDecl.bindings.count == 1, let binding = varDecl.bindings.first else {
                 throw error(attribute, "@Interned can only be applied to a single property")
-            }
-
-            guard varDecl.bindingSpecifier.tokenKind == .keyword(.var) else {
-                throw error(attribute, "@Interned requires 'var' (not 'let')")
             }
 
             guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
