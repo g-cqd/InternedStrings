@@ -2,114 +2,51 @@ import SwiftDiagnostics
 import SwiftSyntax
 import SwiftSyntaxMacros
 
-// MARK: - InternedStrings
+// MARK: - Interned (Accessor Macro)
 
-public struct InternedStringsMacro: MemberMacro {
+public struct InternedMacro: AccessorMacro {
     public static func expansion(
         of node: AttributeSyntax,
-        providingMembersOf declaration: some DeclGroupSyntax,
-        conformingTo protocols: [TypeSyntax],
+        providingAccessorsOf declaration: some DeclSyntaxProtocol,
         in context: some MacroExpansionContext
-    ) throws -> [DeclSyntax] {
-        guard declaration.is(EnumDeclSyntax.self) || declaration.is(ExtensionDeclSyntax.self) else {
-            throw error(node, "@InternedStrings can only be applied to an enum or extension")
+    ) throws -> [AccessorDeclSyntax] {
+        // 1. Validate it's a variable declaration
+        guard let varDecl = declaration.as(VariableDeclSyntax.self) else {
+            throw error(node, "@Interned can only be applied to a property")
         }
 
-        let properties = try collectInternedProperties(from: declaration)
-
-        guard !properties.isEmpty else {
-            throw error(node, "@InternedStrings requires at least one @Interned property")
+        // 2. Must be a single binding
+        guard varDecl.bindings.count == 1, let binding = varDecl.bindings.first else {
+            throw error(node, "@Interned can only be applied to a single property")
         }
 
+        // 3. Must not already have accessors
+        guard binding.accessorBlock == nil else {
+            throw error(node, "@Interned cannot be applied to a computed property")
+        }
+
+        // 4. Extract the string value
+        guard let value = extractValue(from: node, binding: binding) else {
+            throw error(node, "@Interned requires a string literal (as argument or initializer)")
+        }
+
+        // 5. Generate key and obfuscate
         let key = UInt64.random(in: .min ... .max)
+        let obfuscatedBytes = obfuscate(string: value, key: key)
+        let bytesLiteral = formatBytesLiteral(obfuscatedBytes)
 
-        var declarations: [DeclSyntax] = [
-            "private static let _k: UInt64 = \(literal: key)"
-        ]
+        // 6. Generate getter
+        let getter: AccessorDeclSyntax =
+            """
+            get {
+                SI.v([\(raw: bytesLiteral)], \(literal: key))
+            }
+            """
 
-        for property in properties {
-            let obfuscatedBytes = obfuscate(string: property.value, key: key)
-            let bytesLiteral = formatBytesLiteral(obfuscatedBytes)
-
-            declarations.append(
-                "private static let _\(raw: property.name): [UInt8] = [\(raw: bytesLiteral)]"
-            )
-
-            let accessPrefix = property.access.map { "\($0) " } ?? ""
-            let staticPrefix = property.isStatic ? "static " : ""
-            let selfPrefix = property.isStatic ? "" : "Self."
-
-            declarations.append(
-                """
-                nonisolated \(raw: accessPrefix)\(raw: staticPrefix)var \(raw: property.name): String {
-                    SI.v(\(raw: selfPrefix)_\(raw: property.name), \(raw: selfPrefix)_k)
-                }
-                """
-            )
-        }
-
-        return declarations
+        return [getter]
     }
 
-    // MARK: - Property Collection
-
-    private struct InternedProperty {
-        let name: String
-        let value: String
-        let isStatic: Bool
-        let access: String?
-    }
-
-    private static func collectInternedProperties(
-        from declaration: some DeclGroupSyntax
-    ) throws -> [InternedProperty] {
-        var properties: [InternedProperty] = []
-
-        for member in declaration.memberBlock.members {
-            guard let varDecl = member.decl.as(VariableDeclSyntax.self),
-                  let attribute = findInternedAttribute(in: varDecl.attributes)
-            else {
-                continue
-            }
-
-            guard varDecl.bindings.count == 1, let binding = varDecl.bindings.first else {
-                throw error(attribute, "@Interned can only be applied to a single property")
-            }
-
-            guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
-                throw error(attribute, "@Interned requires a simple identifier")
-            }
-
-            guard let value = extractValue(from: attribute, binding: binding) else {
-                throw error(attribute, "@Interned requires a string literal (as argument or initializer)")
-            }
-
-            let isStatic = varDecl.modifiers.contains { $0.name.tokenKind == .keyword(.static) }
-            let access = extractAccessLevel(from: varDecl.modifiers)
-
-            properties.append(InternedProperty(
-                name: identifier,
-                value: value,
-                isStatic: isStatic,
-                access: access
-            ))
-        }
-
-        return properties
-    }
-
-    private static func findInternedAttribute(in attributes: AttributeListSyntax) -> AttributeSyntax? {
-        for attribute in attributes {
-            guard let attr = attribute.as(AttributeSyntax.self),
-                  let identifier = attr.attributeName.as(IdentifierTypeSyntax.self),
-                  identifier.name.text == "Interned"
-            else {
-                continue
-            }
-            return attr
-        }
-        return nil
-    }
+    // MARK: - Value Extraction
 
     private static func extractValue(from attribute: AttributeSyntax, binding: PatternBindingSyntax) -> String? {
         // Try attribute argument: @Interned("value")
@@ -136,20 +73,6 @@ public struct InternedStringsMacro: MemberMacro {
             return nil
         }
         return segment.content.text
-    }
-
-    private static func extractAccessLevel(from modifiers: DeclModifierListSyntax) -> String? {
-        for modifier in modifiers {
-            switch modifier.name.tokenKind {
-            case .keyword(.public): return "public"
-            case .keyword(.private): return "private"
-            case .keyword(.fileprivate): return "fileprivate"
-            case .keyword(.internal): return "internal"
-            case .keyword(.package): return "package"
-            default: continue
-            }
-        }
-        return nil
     }
 
     // MARK: - Obfuscation
@@ -208,18 +131,6 @@ public struct InternedStringsMacro: MemberMacro {
         DiagnosticsError(diagnostics: [
             Diagnostic(node: Syntax(node), message: InternedDiagnostic(message))
         ])
-    }
-}
-
-// MARK: - Interned (Marker)
-
-public struct InternedMacro: PeerMacro {
-    public static func expansion(
-        of node: AttributeSyntax,
-        providingPeersOf declaration: some DeclSyntaxProtocol,
-        in context: some MacroExpansionContext
-    ) throws -> [DeclSyntax] {
-        []
     }
 }
 
