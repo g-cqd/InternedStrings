@@ -1,5 +1,7 @@
 import InternedStrings
+import SwiftParser
 import SwiftSyntax
+import SwiftSyntaxMacroExpansion
 import SwiftSyntaxMacros
 import SwiftSyntaxMacrosTestSupport
 import Testing
@@ -8,7 +10,68 @@ import Testing
 
 private let testMacros: [String: Macro.Type] = [
     "Interned": InternedMacro.self,
+    "InlinedInterned": InternedMacro.self,
 ]
+
+private enum CompatibilitySelectors {
+    @Interned static var setFrame = "_privateSetFrame:"
+    @Interned("_privateGetBounds") static var getBounds: String
+    @Interned static var empty = ""
+}
+
+private struct CompatibilityInstance {
+    @Interned var message = "Hello, World!"
+    @Interned("Hello 世界 🌍") var unicode: String
+}
+
+// MARK: - Runtime Compatibility Tests
+
+@Suite("Runtime Compatibility")
+struct RuntimeCompatibilityTests {
+    @Test("Existing attached macro forms still evaluate")
+    func attachedFormsStillWork() {
+        let instance = CompatibilityInstance()
+
+        #expect(CompatibilitySelectors.setFrame == "_privateSetFrame:")
+        #expect(CompatibilitySelectors.getBounds == "_privateGetBounds")
+        #expect(CompatibilitySelectors.empty.isEmpty)
+        #expect(instance.message == "Hello, World!")
+        #expect(instance.unicode == "Hello 世界 🌍")
+    }
+
+    @Test("Freestanding macro works for inline and local literals")
+    func freestandingExpressionWorks() {
+        let selector = #Interned("_privateSetFrame:")
+        let greeting = #Interned("Hello, World!")
+        let layered = #Interned("layered", strategy: .layered)
+        let inlineSelector = #InlinedInterned("_privateSetFrame:")
+        let inlineLayered = #InlinedInterned("inline-layered", strategy: .layered)
+        let values = [
+            #Interned(""),
+            #Interned("emoji 👋"),
+            #Interned("Hello 世界 🌍"),
+            #Interned("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"),
+        ]
+        let arrayValues = #Interned(["one", "two", "emoji 👋"])
+        let layeredArrayValues = #Interned(["alpha", "beta"], strategy: .layered)
+        let inlineArrayValues = #InlinedInterned(["left", "right"], strategy: .layered)
+
+        #expect(selector == "_privateSetFrame:")
+        #expect(greeting == "Hello, World!")
+        #expect(layered == "layered")
+        #expect(inlineSelector == "_privateSetFrame:")
+        #expect(inlineLayered == "inline-layered")
+        #expect(values == [
+            "",
+            "emoji 👋",
+            "Hello 世界 🌍",
+            "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        ])
+        #expect(arrayValues == ["one", "two", "emoji 👋"])
+        #expect(layeredArrayValues == ["alpha", "beta"])
+        #expect(inlineArrayValues == ["left", "right"])
+    }
+}
 
 // MARK: - Roundtrip Tests
 
@@ -183,22 +246,81 @@ struct MacroExpansionTests {
         )
     }
 
-    @Test("Let binding works")
-    func letBindingWorks() {
+    @Test("Freestanding expression macro")
+    func freestandingExpression() {
         assertMacroExpansion(
             """
-            @Interned("x") static let x: String
+            let greeting = #Interned("hello")
             """,
             expandedSource: """
-            static let x: String {
-                get {
-                    SI.v([$BYTES$], $KEY$)
-                }
-            }
+            let greeting = SI.v([$BYTES$], $KEY$)
             """,
             macros: testMacros,
             indentationWidth: .spaces(4)
         )
+    }
+
+    @Test("Layered freestanding expansion hides plaintext")
+    func layeredFreestandingExpansionHidesPlaintext() throws {
+        let expanded = try expandedSource(
+            for: """
+            let secret = #Interned("secret-value", strategy: .layered)
+            """
+        )
+
+        #expect(!expanded.contains("\"secret-value\""))
+        #expect(expanded.contains("SI.v(["))
+        #expect(expanded.contains("], ["))
+    }
+
+    @Test("Array freestanding expansion hides plaintext")
+    func arrayFreestandingExpansionHidesPlaintext() throws {
+        let expanded = try expandedSource(
+            for: """
+            let secrets = #Interned(["first-secret", "second-secret"], strategy: .layered)
+            """
+        )
+
+        #expect(!expanded.contains("\"first-secret\""))
+        #expect(!expanded.contains("\"second-secret\""))
+        #expect(expanded.contains("[SI.v(["))
+    }
+
+    @Test("Inlined backend avoids shared runtime")
+    func inlinedBackendAvoidsSharedRuntime() throws {
+        let expanded = try expandedSource(
+            for: """
+            let secret = #InlinedInterned("inline-secret", strategy: .layered)
+            """
+        )
+
+        #expect(!expanded.contains("\"inline-secret\""))
+        #expect(!expanded.contains("SI.v("))
+        #expect(expanded.contains("_internedDecode"))
+    }
+
+    @Test("Argument-form accessor expansion hides plaintext")
+    func argumentFormHidesPlaintext() throws {
+        let expanded = try expandedSource(
+            for: """
+            @Interned("secret-value") static var secret: String
+            """
+        )
+
+        #expect(!expanded.contains("\"secret-value\""))
+        #expect(expanded.contains("SI.v(["))
+    }
+
+    @Test("Freestanding expression expansion hides plaintext")
+    func freestandingExpansionHidesPlaintext() throws {
+        let expanded = try expandedSource(
+            for: """
+            let secret = #Interned("secret-value")
+            """
+        )
+
+        #expect(!expanded.contains("\"secret-value\""))
+        #expect(expanded.contains("SI.v(["))
     }
 }
 
@@ -232,7 +354,123 @@ struct DiagnosticTests {
             static var x: String { "y" }
             """,
             diagnostics: [
-                DiagnosticSpec(message: "@Interned cannot be applied to a computed property", line: 1, column: 1)
+                DiagnosticSpec(message: "@Interned cannot be applied to properties with accessors or observers", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on non-string property")
+    func errorOnNonStringProperty() {
+        assertMacroExpansion(
+            """
+            @Interned("x") static var count: Int
+            """,
+            expandedSource: """
+            static var count: Int
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "@Interned can only be applied to String properties", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on multi-binding declaration")
+    func errorOnMultiBindingDeclaration() {
+        assertMacroExpansion(
+            """
+            @Interned("x") static var first: String, second: String
+            """,
+            expandedSource: """
+            static var first: String, second: String
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "@Interned can only be applied to a single property", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on string interpolation")
+    func errorOnStringInterpolation() {
+        assertMacroExpansion(
+            #"""
+            @Interned("hello \(name)") static var greeting: String
+            """#,
+            expandedSource: """
+            static var greeting: String
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "@Interned does not support string interpolation", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on non-literal freestanding input")
+    func errorOnNonLiteralFreestandingInput() {
+        assertMacroExpansion(
+            """
+            let value = "hello"
+            let greeting = #Interned(value)
+            """,
+            expandedSource: """
+            let value = "hello"
+            let greeting = #Interned(value)
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "#Interned requires a string literal argument", line: 2, column: 16)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on invalid strategy")
+    func errorOnInvalidStrategy() {
+        assertMacroExpansion(
+            """
+            let greeting = #Interned("hello", strategy: unknown)
+            """,
+            expandedSource: """
+            let greeting = #Interned("hello", strategy: unknown)
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "#Interned supports only .standard and .layered strategies", line: 1, column: 16)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on non-literal array element")
+    func errorOnNonLiteralArrayElement() {
+        assertMacroExpansion(
+            """
+            let value = "hello"
+            let greetings = #Interned(["first", value])
+            """,
+            expandedSource: """
+            let value = "hello"
+            let greetings = #Interned(["first", value])
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "#Interned array elements must all be string literals", line: 2, column: 17)
+            ],
+            macros: testMacros
+        )
+    }
+
+    @Test("Error on invalid strategy for inlined backend")
+    func errorOnInvalidStrategyForInlinedBackend() {
+        assertMacroExpansion(
+            """
+            let greeting = #InlinedInterned("hello", strategy: unknown)
+            """,
+            expandedSource: """
+            let greeting = #InlinedInterned("hello", strategy: unknown)
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "#InlinedInterned supports only .standard and .layered strategies", line: 1, column: 16)
             ],
             macros: testMacros
         )
@@ -259,6 +497,27 @@ private func assertMacroExpansion(
         file: file,
         line: line
     )
+}
+
+private func expandedSource(for source: String) throws -> String {
+    let sourceFile = Parser.parse(source: source)
+    let context = BasicMacroExpansionContext(
+        sourceFiles: [
+            sourceFile: .init(
+                moduleName: "InternedStringsTests",
+                fullFilePath: #filePath
+            )
+        ]
+    )
+
+    func contextGenerator(_ syntax: Syntax) -> BasicMacroExpansionContext {
+        BasicMacroExpansionContext(
+            sharingWith: context,
+            lexicalContext: syntax.allMacroLexicalContexts()
+        )
+    }
+
+    return sourceFile.expand(macros: testMacros, contextGenerator: contextGenerator).description
 }
 
 // MARK: - Test Obfuscator

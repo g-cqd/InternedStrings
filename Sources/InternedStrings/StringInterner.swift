@@ -11,8 +11,32 @@ public enum SI: Sendable {
     /// - Complexity: O(n) time, O(n) space where n = d.count
     @inlinable
     public static func v(_ d: [UInt8], _ k: UInt64) -> String {
+        String(decoding: _decodedBytes(d, k), as: UTF8.self)
+    }
+
+    /// Resolves an interned string from a multiply-obfuscated storage representation.
+    /// - Parameters:
+    ///   - d: Obfuscated byte array
+    ///   - keys: Obfuscation keys in the order they were originally applied
+    /// - Returns: The original string
+    /// - Complexity: O(m * n) time where m = keys.count and n = d.count
+    @inlinable
+    public static func v(_ d: [UInt8], _ keys: [UInt64]) -> String {
+        guard !d.isEmpty else { return "" }
+
+        var bytes = d
+
+        for key in keys.reversed() {
+            bytes = Array(_decodedBytes(bytes, key))
+        }
+
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    @inlinable
+    static func _decodedBytes(_ d: [UInt8], _ k: UInt64) -> ContiguousArray<UInt8> {
         let n = d.count
-        guard n > 0 else { return "" }
+        guard n > 0 else { return [] }
 
         // Regenerate permutation from key
         var g = _SIGen(k ^ 0xA5A5_A5A5_A5A5_A5A5)
@@ -30,7 +54,7 @@ public enum SI: Sendable {
             o[p[i]] = b ^ UInt8(truncatingIfNeeded: h.n())
         }
 
-        return String(decoding: o, as: UTF8.self)
+        return o
     }
 }
 

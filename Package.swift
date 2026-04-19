@@ -5,8 +5,12 @@ import PackageDescription
 private let package = Package(
     name: "InternedStrings",
     platforms: [
-        .iOS(.v14),
-        .macOS(.v11),
+        .iOS(.v13),
+        .macOS(.v10_15),
+        .tvOS(.v13),
+        .watchOS(.v6),
+        .visionOS(.v1),
+        .macCatalyst(.v13),
     ],
     products: [
         .library(
@@ -42,6 +46,8 @@ private let package = Package(
             dependencies: [
                 "InternedStrings",
                 "InternedStringsMacros",
+                .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacroExpansion", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ],
             swiftSettings: swiftSettings
