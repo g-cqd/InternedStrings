@@ -1,6 +1,7 @@
 // MARK: - SI (String Interning Runtime)
 
 /// Runtime decoder for interned strings.
+///
 /// Reconstructs original strings from obfuscated byte storage.
 public enum SI: Sendable {
     /// Resolves an interned string from its storage representation.

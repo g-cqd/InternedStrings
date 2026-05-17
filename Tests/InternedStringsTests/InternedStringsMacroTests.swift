@@ -61,12 +61,13 @@ struct RuntimeCompatibilityTests {
         #expect(layered == "layered")
         #expect(inlineSelector == "_privateSetFrame:")
         #expect(inlineLayered == "inline-layered")
-        #expect(values == [
-            "",
-            "emoji 👋",
-            "Hello 世界 🌍",
-            "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
-        ])
+        #expect(
+            values == [
+                "",
+                "emoji 👋",
+                "Hello 世界 🌍",
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+            ])
         #expect(arrayValues == ["one", "two", "emoji 👋"])
         #expect(layeredArrayValues == ["alpha", "beta"])
         #expect(inlineArrayValues == ["left", "right"])
@@ -199,12 +200,12 @@ struct MacroExpansionTests {
             @Interned("hello") static var greeting: String
             """,
             expandedSource: """
-            static var greeting: String {
-                get {
-                    SI.v([$BYTES$], $KEY$)
+                static var greeting: String {
+                    get {
+                        SI.v([$BYTES$], $KEY$)
+                    }
                 }
-            }
-            """,
+                """,
             macros: testMacros,
             indentationWidth: .spaces(4)
         )
@@ -217,12 +218,12 @@ struct MacroExpansionTests {
             @Interned static var greeting = "hello"
             """,
             expandedSource: """
-            static var greeting = "hello" {
-                get {
-                    SI.v([$BYTES$], $KEY$)
+                static var greeting = "hello" {
+                    get {
+                        SI.v([$BYTES$], $KEY$)
+                    }
                 }
-            }
-            """,
+                """,
             macros: testMacros,
             indentationWidth: .spaces(4)
         )
@@ -235,12 +236,12 @@ struct MacroExpansionTests {
             @Interned("value") var instance: String
             """,
             expandedSource: """
-            var instance: String {
-                get {
-                    SI.v([$BYTES$], $KEY$)
+                var instance: String {
+                    get {
+                        SI.v([$BYTES$], $KEY$)
+                    }
                 }
-            }
-            """,
+                """,
             macros: testMacros,
             indentationWidth: .spaces(4)
         )
@@ -253,8 +254,8 @@ struct MacroExpansionTests {
             let greeting = #Interned("hello")
             """,
             expandedSource: """
-            let greeting = SI.v([$BYTES$], $KEY$)
-            """,
+                let greeting = SI.v([$BYTES$], $KEY$)
+                """,
             macros: testMacros,
             indentationWidth: .spaces(4)
         )
@@ -264,8 +265,8 @@ struct MacroExpansionTests {
     func layeredFreestandingExpansionHidesPlaintext() throws {
         let expanded = try expandedSource(
             for: """
-            let secret = #Interned("secret-value", strategy: .layered)
-            """
+                let secret = #Interned("secret-value", strategy: .layered)
+                """
         )
 
         #expect(!expanded.contains("\"secret-value\""))
@@ -277,8 +278,8 @@ struct MacroExpansionTests {
     func arrayFreestandingExpansionHidesPlaintext() throws {
         let expanded = try expandedSource(
             for: """
-            let secrets = #Interned(["first-secret", "second-secret"], strategy: .layered)
-            """
+                let secrets = #Interned(["first-secret", "second-secret"], strategy: .layered)
+                """
         )
 
         #expect(!expanded.contains("\"first-secret\""))
@@ -290,8 +291,8 @@ struct MacroExpansionTests {
     func inlinedBackendAvoidsSharedRuntime() throws {
         let expanded = try expandedSource(
             for: """
-            let secret = #InlinedInterned("inline-secret", strategy: .layered)
-            """
+                let secret = #InlinedInterned("inline-secret", strategy: .layered)
+                """
         )
 
         #expect(!expanded.contains("\"inline-secret\""))
@@ -303,8 +304,8 @@ struct MacroExpansionTests {
     func argumentFormHidesPlaintext() throws {
         let expanded = try expandedSource(
             for: """
-            @Interned("secret-value") static var secret: String
-            """
+                @Interned("secret-value") static var secret: String
+                """
         )
 
         #expect(!expanded.contains("\"secret-value\""))
@@ -315,8 +316,8 @@ struct MacroExpansionTests {
     func freestandingExpansionHidesPlaintext() throws {
         let expanded = try expandedSource(
             for: """
-            let secret = #Interned("secret-value")
-            """
+                let secret = #Interned("secret-value")
+                """
         )
 
         #expect(!expanded.contains("\"secret-value\""))
@@ -335,10 +336,11 @@ struct DiagnosticTests {
             @Interned static var x: String
             """,
             expandedSource: """
-            static var x: String
-            """,
+                static var x: String
+                """,
             diagnostics: [
-                DiagnosticSpec(message: "@Interned requires a string literal (as argument or initializer)", line: 1, column: 1)
+                DiagnosticSpec(
+                    message: "@Interned requires a string literal (as argument or initializer)", line: 1, column: 1)
             ],
             macros: testMacros
         )
@@ -351,10 +353,12 @@ struct DiagnosticTests {
             @Interned("x") static var x: String { "y" }
             """,
             expandedSource: """
-            static var x: String { "y" }
-            """,
+                static var x: String { "y" }
+                """,
             diagnostics: [
-                DiagnosticSpec(message: "@Interned cannot be applied to properties with accessors or observers", line: 1, column: 1)
+                DiagnosticSpec(
+                    message: "@Interned cannot be applied to properties with accessors or observers", line: 1, column: 1
+                )
             ],
             macros: testMacros
         )
@@ -367,8 +371,8 @@ struct DiagnosticTests {
             @Interned("x") static var count: Int
             """,
             expandedSource: """
-            static var count: Int
-            """,
+                static var count: Int
+                """,
             diagnostics: [
                 DiagnosticSpec(message: "@Interned can only be applied to String properties", line: 1, column: 1)
             ],
@@ -383,8 +387,8 @@ struct DiagnosticTests {
             @Interned("x") static var first: String, second: String
             """,
             expandedSource: """
-            static var first: String, second: String
-            """,
+                static var first: String, second: String
+                """,
             diagnostics: [
                 DiagnosticSpec(message: "@Interned can only be applied to a single property", line: 1, column: 1)
             ],
@@ -399,8 +403,8 @@ struct DiagnosticTests {
             @Interned("hello \(name)") static var greeting: String
             """#,
             expandedSource: """
-            static var greeting: String
-            """,
+                static var greeting: String
+                """,
             diagnostics: [
                 DiagnosticSpec(message: "@Interned does not support string interpolation", line: 1, column: 1)
             ],
@@ -416,9 +420,9 @@ struct DiagnosticTests {
             let greeting = #Interned(value)
             """,
             expandedSource: """
-            let value = "hello"
-            let greeting = #Interned(value)
-            """,
+                let value = "hello"
+                let greeting = #Interned(value)
+                """,
             diagnostics: [
                 DiagnosticSpec(message: "#Interned requires a string literal argument", line: 2, column: 16)
             ],
@@ -433,10 +437,11 @@ struct DiagnosticTests {
             let greeting = #Interned("hello", strategy: unknown)
             """,
             expandedSource: """
-            let greeting = #Interned("hello", strategy: unknown)
-            """,
+                let greeting = #Interned("hello", strategy: unknown)
+                """,
             diagnostics: [
-                DiagnosticSpec(message: "#Interned supports only .standard and .layered strategies", line: 1, column: 16)
+                DiagnosticSpec(
+                    message: "#Interned supports only .standard and .layered strategies", line: 1, column: 16)
             ],
             macros: testMacros
         )
@@ -450,9 +455,9 @@ struct DiagnosticTests {
             let greetings = #Interned(["first", value])
             """,
             expandedSource: """
-            let value = "hello"
-            let greetings = #Interned(["first", value])
-            """,
+                let value = "hello"
+                let greetings = #Interned(["first", value])
+                """,
             diagnostics: [
                 DiagnosticSpec(message: "#Interned array elements must all be string literals", line: 2, column: 17)
             ],
@@ -467,10 +472,11 @@ struct DiagnosticTests {
             let greeting = #InlinedInterned("hello", strategy: unknown)
             """,
             expandedSource: """
-            let greeting = #InlinedInterned("hello", strategy: unknown)
-            """,
+                let greeting = #InlinedInterned("hello", strategy: unknown)
+                """,
             diagnostics: [
-                DiagnosticSpec(message: "#InlinedInterned supports only .standard and .layered strategies", line: 1, column: 16)
+                DiagnosticSpec(
+                    message: "#InlinedInterned supports only .standard and .layered strategies", line: 1, column: 16)
             ],
             macros: testMacros
         )
