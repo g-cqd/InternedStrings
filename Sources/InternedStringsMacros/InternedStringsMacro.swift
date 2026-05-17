@@ -51,15 +51,16 @@ private struct GeneratedObfuscation {
 
     static func make(for string: String, strategy: StrategySpec, backend: BackendSpec) -> GeneratedObfuscation {
         let inputBytes = Array(string.utf8)
-        let keys: [UInt64] = switch strategy {
-        case .standard:
-            [UInt64.random(in: .min ... .max)]
-        case .layered:
-            [
-                UInt64.random(in: .min ... .max),
-                UInt64.random(in: .min ... .max),
-            ]
-        }
+        let keys: [UInt64] =
+            switch strategy {
+                case .standard:
+                    [UInt64.random(in: .min ... .max)]
+                case .layered:
+                    [
+                        UInt64.random(in: .min ... .max),
+                        UInt64.random(in: .min ... .max),
+                    ]
+            }
 
         let obfuscated = obfuscate(bytes: inputBytes, keys: keys)
         let bytesLiteral = formatBytesLiteral(obfuscated)
@@ -67,15 +68,15 @@ private struct GeneratedObfuscation {
 
         let expressionSource: String
         switch backend {
-        case .shared:
-            if keyLiterals.count == 1, let keyLiteral = keyLiterals.first {
-                expressionSource = "SI.v([\(bytesLiteral)], \(keyLiteral))"
-            } else {
-                let keysLiteral = keyLiterals.joined(separator: ", ")
-                expressionSource = "SI.v([\(bytesLiteral)], [\(keysLiteral)])"
-            }
-        case .inlined:
-            expressionSource = inlineExpressionSource(bytesLiteral: bytesLiteral, keyLiterals: keyLiterals)
+            case .shared:
+                if keyLiterals.count == 1, let keyLiteral = keyLiterals.first {
+                    expressionSource = "SI.v([\(bytesLiteral)], \(keyLiteral))"
+                } else {
+                    let keysLiteral = keyLiterals.joined(separator: ", ")
+                    expressionSource = "SI.v([\(bytesLiteral)], [\(keysLiteral)])"
+                }
+            case .inlined:
+                expressionSource = inlineExpressionSource(bytesLiteral: bytesLiteral, keyLiterals: keyLiterals)
         }
 
         return GeneratedObfuscation(expressionSource: expressionSource)
@@ -84,43 +85,43 @@ private struct GeneratedObfuscation {
     private static func inlineExpressionSource(bytesLiteral: String, keyLiterals: [String]) -> String {
         let keysLiteral = keyLiterals.joined(separator: ", ")
         return """
-        {
-            func _internedNext(_ state: inout UInt64) -> UInt64 {
-                state &+= 0x9E37_79B9_7F4A_7C15
-                var z = state
-                z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-                z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-                return z ^ (z >> 31)
-            }
-
-            func _internedDecode(_ data: [UInt8], _ key: UInt64) -> [UInt8] {
-                let count = data.count
-                guard count > 0 else { return [] }
-
-                var shuffleState = key ^ 0xA5A5_A5A5_A5A5_A5A5
-                var permutation = Array(0..<count)
-                for index in stride(from: count - 1, through: 1, by: -1) {
-                    permutation.swapAt(index, Int(_internedNext(&shuffleState) % UInt64(index + 1)))
+            {
+                func _internedNext(_ state: inout UInt64) -> UInt64 {
+                    state &+= 0x9E37_79B9_7F4A_7C15
+                    var z = state
+                    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+                    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+                    return z ^ (z >> 31)
                 }
 
-                var streamState = key ^ 0x5A5A_5A5A_5A5A_5A5A
-                var output = [UInt8](repeating: 0, count: count)
-                for (index, byte) in data.enumerated() {
-                    output[permutation[index]] = byte ^ UInt8(truncatingIfNeeded: _internedNext(&streamState))
+                func _internedDecode(_ data: [UInt8], _ key: UInt64) -> [UInt8] {
+                    let count = data.count
+                    guard count > 0 else { return [] }
+
+                    var shuffleState = key ^ 0xA5A5_A5A5_A5A5_A5A5
+                    var permutation = Array(0..<count)
+                    for index in stride(from: count - 1, through: 1, by: -1) {
+                        permutation.swapAt(index, Int(_internedNext(&shuffleState) % UInt64(index + 1)))
+                    }
+
+                    var streamState = key ^ 0x5A5A_5A5A_5A5A_5A5A
+                    var output = [UInt8](repeating: 0, count: count)
+                    for (index, byte) in data.enumerated() {
+                        output[permutation[index]] = byte ^ UInt8(truncatingIfNeeded: _internedNext(&streamState))
+                    }
+
+                    return output
                 }
 
-                return output
-            }
+                var _internedBytes: [UInt8] = [\(bytesLiteral)]
+                let _internedKeys: [UInt64] = [\(keysLiteral)]
+                for _internedKey in _internedKeys.reversed() {
+                    _internedBytes = _internedDecode(_internedBytes, _internedKey)
+                }
 
-            var _internedBytes: [UInt8] = [\(bytesLiteral)]
-            let _internedKeys: [UInt64] = [\(keysLiteral)]
-            for _internedKey in _internedKeys.reversed() {
-                _internedBytes = _internedDecode(_internedBytes, _internedKey)
-            }
-
-            return String(decoding: _internedBytes, as: UTF8.self)
-        }()
-        """
+                return String(decoding: _internedBytes, as: UTF8.self)
+            }()
+            """
     }
 
     private static func obfuscate(bytes: [UInt8], keys: [UInt64]) -> [UInt8] {
@@ -182,8 +183,8 @@ private struct GeneratedObfuscation {
     }
 }
 
-private extension InternedMacro {
-    static func validatedBinding(
+extension InternedMacro {
+    fileprivate static func validatedBinding(
         from declaration: some DeclSyntaxProtocol,
         attribute node: AttributeSyntax
     ) throws -> PatternBindingSyntax {
@@ -204,42 +205,46 @@ private extension InternedMacro {
         }
 
         if let typeAnnotation = binding.typeAnnotation,
-           !isStringType(typeAnnotation.type) {
+            !isStringType(typeAnnotation.type)
+        {
             throw error(node, "@Interned can only be applied to String properties")
         }
 
         return binding
     }
 
-    static func propertyLiteralValue(
+    fileprivate static func propertyLiteralValue(
         from attribute: AttributeSyntax,
         binding: PatternBindingSyntax
     ) throws -> String {
         if let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
-           let first = arguments.first?.expression {
-            return try wrap({
-                try literalValue(
-                    from: first,
-                    nonLiteralMessage: "@Interned requires a string literal (as argument or initializer)",
-                    interpolationMessage: "@Interned does not support string interpolation"
-                )
-            }, node: attribute)
+            let first = arguments.first?.expression
+        {
+            return try wrap(
+                {
+                    try literalValue(
+                        from: first,
+                        nonLiteralMessage: "@Interned requires a string literal (as argument or initializer)",
+                        interpolationMessage: "@Interned does not support string interpolation"
+                    )
+                }, node: attribute)
         }
 
         if let initializer = binding.initializer?.value {
-            return try wrap({
-                try literalValue(
-                    from: initializer,
-                    nonLiteralMessage: "@Interned requires a string literal (as argument or initializer)",
-                    interpolationMessage: "@Interned does not support string interpolation"
-                )
-            }, node: attribute)
+            return try wrap(
+                {
+                    try literalValue(
+                        from: initializer,
+                        nonLiteralMessage: "@Interned requires a string literal (as argument or initializer)",
+                        interpolationMessage: "@Interned does not support string interpolation"
+                    )
+                }, node: attribute)
         }
 
         throw error(attribute, "@Interned requires a string literal (as argument or initializer)")
     }
 
-    static func expressionInput(
+    fileprivate static func expressionInput(
         from node: some FreestandingMacroExpansionSyntax,
         backend: BackendSpec
     ) throws -> FreestandingInput {
@@ -263,20 +268,22 @@ private extension InternedMacro {
             return FreestandingInput(expressionSource: "[\(expressions.joined(separator: ", "))]")
         }
 
-        let value = try wrap({
-            try literalValue(
-                from: firstArgument.expression,
-                nonLiteralMessage: "\(macroName) requires a string literal or array literal of strings",
-                interpolationMessage: "\(macroName) does not support string interpolation"
-            )
-        }, node: node)
+        let value = try wrap(
+            {
+                try literalValue(
+                    from: firstArgument.expression,
+                    nonLiteralMessage: "\(macroName) requires a string literal or array literal of strings",
+                    interpolationMessage: "\(macroName) does not support string interpolation"
+                )
+            }, node: node)
 
         return FreestandingInput(
-            expressionSource: GeneratedObfuscation.make(for: value, strategy: strategy, backend: backend).expressionSource
+            expressionSource: GeneratedObfuscation.make(for: value, strategy: strategy, backend: backend)
+                .expressionSource
         )
     }
 
-    static func strategy(
+    fileprivate static func strategy(
         from arguments: LabeledExprListSyntax.SubSequence,
         node: some SyntaxProtocol,
         macroName: String
@@ -298,32 +305,33 @@ private extension InternedMacro {
         }
 
         switch memberAccess.declName.baseName.text {
-        case "standard":
-            return .standard
-        case "layered":
-            return .layered
-        default:
-            throw error(node, "\(macroName) supports only .standard and .layered strategies")
+            case "standard":
+                return .standard
+            case "layered":
+                return .layered
+            default:
+                throw error(node, "\(macroName) supports only .standard and .layered strategies")
         }
     }
 
-    static func arrayLiteralValues(
+    fileprivate static func arrayLiteralValues(
         from array: ArrayExprSyntax,
         node: some SyntaxProtocol,
         macroName: String
     ) throws -> [String] {
         try array.elements.map { element in
-            try wrap({
-                try literalValue(
-                    from: element.expression,
-                    nonLiteralMessage: "\(macroName) array elements must all be string literals",
-                    interpolationMessage: "\(macroName) array elements do not support string interpolation"
-                )
-            }, node: node)
+            try wrap(
+                {
+                    try literalValue(
+                        from: element.expression,
+                        nonLiteralMessage: "\(macroName) array elements must all be string literals",
+                        interpolationMessage: "\(macroName) array elements do not support string interpolation"
+                    )
+                }, node: node)
         }
     }
 
-    static func literalValue(
+    fileprivate static func literalValue(
         from expr: ExprSyntax,
         nonLiteralMessage: String,
         interpolationMessage: String
@@ -333,7 +341,8 @@ private extension InternedMacro {
         }
 
         if literal.segments.count == 1,
-           case let .stringSegment(segment) = literal.segments.first {
+            case .stringSegment(let segment) = literal.segments.first
+        {
             return segment.content.text
         }
 
@@ -349,25 +358,25 @@ private extension InternedMacro {
         throw LiteralValueError.message(nonLiteralMessage)
     }
 
-    static func isStringType(_ type: TypeSyntax) -> Bool {
+    fileprivate static func isStringType(_ type: TypeSyntax) -> Bool {
         let text = type.trimmed.description.filter { !$0.isWhitespace }
         return text == "String" || text == "Swift.String"
     }
 
-    static func backend(for node: some FreestandingMacroExpansionSyntax) -> BackendSpec {
+    fileprivate static func backend(for node: some FreestandingMacroExpansionSyntax) -> BackendSpec {
         switch node.macroName.text {
-        case "InlinedInterned":
-            .inlined
-        default:
-            .shared
+            case "InlinedInterned":
+                .inlined
+            default:
+                .shared
         }
     }
 
-    static func macroDisplayName(for node: some FreestandingMacroExpansionSyntax) -> String {
+    fileprivate static func macroDisplayName(for node: some FreestandingMacroExpansionSyntax) -> String {
         "#\(node.macroName.text)"
     }
 
-    static func error(_ node: some SyntaxProtocol, _ message: String) -> DiagnosticsError {
+    fileprivate static func error(_ node: some SyntaxProtocol, _ message: String) -> DiagnosticsError {
         DiagnosticsError(diagnostics: [
             Diagnostic(node: Syntax(node), message: InternedDiagnostic(message))
         ])
@@ -390,8 +399,8 @@ private struct InternedDiagnostic: DiagnosticMessage {
     var severity: DiagnosticSeverity { .error }
 }
 
-private extension InternedMacro {
-    static func wrap(_ operation: () throws -> String, node: some SyntaxProtocol) throws -> String {
+extension InternedMacro {
+    fileprivate static func wrap(_ operation: () throws -> String, node: some SyntaxProtocol) throws -> String {
         do {
             return try operation()
         } catch let LiteralValueError.message(message) {
@@ -400,8 +409,8 @@ private extension InternedMacro {
     }
 }
 
-private extension String {
-    func paddedToTwo() -> String {
+extension String {
+    fileprivate func paddedToTwo() -> String {
         count < 2 ? "0" + self : self
     }
 }
