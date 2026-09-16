@@ -23,7 +23,8 @@
         "allowedFunctions": ["XCTAssertNoThrow"]
     },
     "orderedImports": {
-        "includeConditionalImports": false
+        "includeConditionalImports": false,
+        "shouldGroupImports": false
     },
     "rules": {
         "AllPublicDeclarationsHaveDocumentation": false,
