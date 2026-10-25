@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "InternedStrings", targets: ["InternedStringsCompatibility"])
     ],
     dependencies: [
-        .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "afc1be3d578045b381e76f6b1712a81b39956ced")
+        .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "785c6b25cb3f4dc16ca2334fd69428fae4ee0b01")
     ],
     targets: [
         .target(
