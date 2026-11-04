@@ -1,0 +1,12 @@
+{
+  "project": { "linux": false },
+  "swift": { "versions": ["6.4.1", "6.3.3"], "matrix": ["macos-debug"], "xcode": "26.6" },
+  "commands": [
+    {
+      "id": "latest-dependencies",
+      "title": "Compatibility · Latest Published Dependencies",
+      "run": "swift package update",
+      "before": ["macos-debug"]
+    }
+  ]
+}
