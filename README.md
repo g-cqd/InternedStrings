@@ -1,22 +1,27 @@
-# InternedStrings compatibility package
+# InternedStrings
 
-The implementation now lives in [Aemi](https://github.com/Aemi-Studio/aemi).
-This package preserves the `InternedStrings` product and import through the published
-Aemi `main` branch. Attached, expression, array, layered, and inlined macros share
-one implementation and diagnostic test suite in Aemi.
+Compatibility package re-exporting the `InternedStrings` macro product from [Aemi](https://github.com/Aemi-Studio/aemi).
 
-For new consumers, select Aemi's `InternedStrings` product directly.
+For new projects, depend directly on the `InternedStrings` product from `Aemi-Studio/aemi`.
 
 ## Requirements
 
-Swift 6.3+. iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2, or Mac Catalyst 18.
-The previous standalone implementation remains in this repository's Git history
-for applications that still require older deployment targets.
+- Swift 6.3+ (Swift 6 language mode)
+- iOS 18+, macOS 15+, tvOS 18+, watchOS 11+, visionOS 2+
 
-## Verification
+## Installation
 
-Run `swift test` to check imports and macro expansion through the compatibility product.
+```swift
+dependencies: [
+    .package(url: "https://github.com/g-cqd/InternedStrings.git", branch: "main")
+]
+```
+
+## Documentation
+
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE)
