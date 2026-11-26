@@ -1,12 +1,12 @@
 {
-  "originHash" : "c99eabe103fd519973be64e062f450116e79e315a534a880e6b9b913aacc5e93",
+  "originHash" : "cedf7d08fd41f78948b33a296efb7716e035e2ef425d4c03484d3d81b51b29cc",
   "pins" : [
     {
       "identity" : "aemi",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Aemi-Studio/aemi.git",
       "state" : {
-        "revision" : "1567137e2c810eb489facf29d90a2c623b75d604"
+        "revision" : "9f8d1a3eafed0ad23919b9c68d33606632ce0659"
       }
     },
     {
@@ -34,6 +34,15 @@
       "state" : {
         "revision" : "b0b1963823fe828065ef49c09c8c9489f43cf7be",
         "version" : "5.2.0"
+      }
+    },
+    {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "c7413d967b97aae67c46452bf7645bdb7b200e8e",
+        "version" : "1.17.2"
       }
     },
     {
